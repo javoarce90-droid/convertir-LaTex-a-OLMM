@@ -1,0 +1,32 @@
+{
+  "content": "# Sesión de aprendizaje\n\nContenido principal con fórmula: $\\int_{\\partial \\Sigma} \\omega = \\int_{\\Sigma} d\\omega$",
+  "templateVars": {
+    "tituloSesion": "Teorema de Stokes",
+    "docente": "Javier Arce",
+    "institucionEducativa": "Colegio San Miguel",
+    "nivel": "Secundario",
+    "grado": "Quinto",
+    "area": "Matemática",
+    "seccion": "",
+    "fecha": "17/03/2026",
+    "competencias": "Resuelve problemas de cantidad",
+    "capacidades": "Comunica su comprensión sobre los números y las operaciones",
+    "desempeños": "•Establece relaciones entre datos y acciones de comparar e igualar cantidades o trabajar con tasas de interés compuesto. Las transforma a expresiones numéricas (modelos) que incluyen operaciones con números racionales y algunos números irracionales, como π, e, φ, o raíces inexactas; notación científica; e interés compuesto u otros modelos a su alcance.",
+    "criteriosDeEvaluacion": "Explica de forma clara y estructurada el proceso de resolución de un problema de cantidad que incluya números racionales, irracionales y notación científica, y justifica cada paso usando propiedades matemáticas y ejemplos concretos",
+    "instrumentosDeEvaluacion": "",
+    "estandarDeAprendizaje": "Resuelve problemas referidos a las relaciones entre cantidades muy grandes o muy pequeñas, magnitudes o intercambios financieros, traduciéndolas a expresiones numéricas y operativas con números irracionales o racionales, notación científica, intervalos, y tasas de interés simple y compuesto. Evalúa si estas expresiones cumplen con las condiciones iniciales del problema. Expresa su comprensión de los números racionales e irracionales, de sus operaciones y propiedades, así como de la notación científica; establece relaciones de equivalencia entre múltiplos y submúltiplos de unidades de masa, y tiempo, y entre escalas de temperatura, empleando lenguaje matemático y diversas representaciones; basado en esto interpreta e integra información contenida en varias fuentes de información. Selecciona, combina y adapta variados recursos, estrategias y procedimientos matemáticos de cálculo y estimación para resolver problemas, los evalúa y opta por aquellos más idóneos según las condiciones del problema. Plantea y compara afirmaciones sobre números racionales y sus propiedades, formula enunciados opuestos o casos especiales que se cumplen entre expresiones numéricas; justifica, comprueba o descarta la validez de la afirmación mediante contraejemplos o propiedades matemáticas",
+    "proposito": "Los estudiantes aplicarán el teorema de Stokes para resolver y explicar problemas de cantidad que incluyan números racionales, irracionales y notación científica, comunicando su comprensión mediante ejemplos concretos.",
+    "evidencia": "Los estudiantes redactarán y explicarán de forma estructurada un documento en el que, aplicando el Teorema de Stokes a un caso práctico (por ejemplo, el flujo de un fluido sobre una superficie curva), convertirán los datos en expresiones numéricas que incluyan números racionales, irracionales y notación científica, justificando cada paso con propiedades matemáticas y ejemplos concretos.",
+    "competenciasTransversales": "Se desenvuelve en los entornos virtuales generados por las TIC",
+    "enfoquesTransversales": "",
+    "valores": "",
+    "actitudes": "",
+    "inicio": "**Introducción al tema:**\n\nEl teorema de Stokes establece que:\n\n$$\\int_{\\partial \\Sigma} \\omega = \\int_{\\Sigma} d\\omega$$\n\nDonde $\\omega$ es una forma diferencial y $\\Sigma$ es una superficie orientada.",
+    "inicioTiempo": "20 minutos",
+    "desarrollo": "**Desarrollo de la clase:**\n\n1. Recordemos que la energía se calcula como $E = mc^2$\n2. La integral de línea: $\\oint_C \\vec{F} \\cdot d\\vec{r}$\n3. La divergencia: $\\nabla \\cdot \\vec{F} = \\frac{\\partial F_x}{\\partial x} + \\frac{\\partial F_y}{\\partial y}$",
+    "desarrolloTiempo": "50 minutos",
+    "cierre": "Preguntas para los alumnos",
+    "cierreTiempo": "50 minutos",
+    "ejerciciosRespuestas": "**Ejercicio 1:** Calcular $\\int_0^1 x^2 dx$\n\n**Respuesta:** $\\frac{x^3}{3}\\Big|_0^1 = \\frac{1}{3}$\n\n**Ejercicio 2:** Resolver $\\lim_{x \\to 0} \\frac{\\sin x}{x}$\n\n**Respuesta:** $1$"
+  }
+}
