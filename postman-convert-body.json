@@ -1,0 +1,31 @@
+{
+  "templateVars": {
+    "tituloSesion": "Teorema de Stokes",
+    "docente": "Javier Arce",
+    "institucionEducativa": "Colegio San Miguel",
+    "nivel": "Secundario",
+    "grado": "Quinto",
+    "area": "Matemática",
+    "seccion": "",
+    "fecha": "17/03/2026",
+    "competencias": "Resuelve problemas de cantidad",
+    "capacidades": "Comunica su comprensión sobre los números y las operaciones",
+    "desempeños": "Establece relaciones entre datos y acciones de comparar e igualar cantidades o trabajar con tasas de interés compuesto.",
+    "criteriosDeEvaluacion": "Explica de forma clara y estructurada el proceso de resolución de un problema de cantidad.",
+    "instrumentosDeEvaluacion": "",
+    "estandarDeAprendizaje": "Resuelve problemas referidos a las relaciones entre cantidades muy grandes o muy pequeñas.",
+    "proposito": "Los estudiantes aplicarán el teorema de Stokes para resolver y explicar problemas de cantidad.",
+    "evidencia": "Los estudiantes redactarán un documento aplicando el Teorema de Stokes a un caso práctico.",
+    "competenciasTransversales": "Se desenvuelve en los entornos virtuales generados por las TIC",
+    "enfoquesTransversales": "",
+    "valores": "",
+    "actitudes": "",
+    "inicio": "**Introducción al tema:**\n\nEl teorema de Stokes establece que:\n\n$$\\int_{\\partial \\Sigma} \\omega = \\int_{\\Sigma} d\\omega$$\n\nDonde $\\omega$ es una forma diferencial y $\\Sigma$ es una superficie orientada.",
+    "inicioTiempo": "20 minutos",
+    "desarrollo": "**Desarrollo de la clase:**\n\n1. Recordemos que la energía se calcula como $E = mc^2$\n2. La integral de línea: $\\oint_C \\vec{F} \\cdot d\\vec{r}$\n3. La divergencia: $\\nabla \\cdot \\vec{F} = \\frac{\\partial F_x}{\\partial x} + \\frac{\\partial F_y}{\\partial y}$",
+    "desarrolloTiempo": "50 minutos",
+    "cierre": "Preguntas para los alumnos",
+    "cierreTiempo": "10 minutos",
+    "ejerciciosRespuestas": "**Ejercicio 1:** Calcular $\\int_0^1 x^2 dx$\n\n**Respuesta:** $\\frac{x^3}{3}\\Big|_0^1 = \\frac{1}{3}$\n\n**Ejercicio 2:** Resolver $\\lim_{x \\to 0} \\frac{\\sin x}{x}$\n\n**Respuesta:** $1$"
+  }
+}
