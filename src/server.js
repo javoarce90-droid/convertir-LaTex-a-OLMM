@@ -46,7 +46,6 @@ const limiter = rateLimit({
 app.use('/convert', limiter);
 
 function requireApiKey(req, res, next) {
-    console.log("DEBUG API_KEY:", API_KEY, "tipo:", typeof API_KEY);
     if (!API_KEY) return next();
     const key = req.headers['x-api-key'];
     if (!key || key !== API_KEY) {
@@ -93,9 +92,6 @@ function normalizeLatexDelimiters(input) {
     
     let text = input;
     
-    // DEBUG: descomentar para ver qué llega realmente
-    // console.log('INPUT RAW:', JSON.stringify(text));
-    
     // Paso 1: Normalizar TODOS los backslashes múltiples en comandos LaTeX
     // Esto maneja casos donde el JSON se escapó múltiples veces
     // \\\\vec → \\vec, \\\\frac → \\frac, etc.
@@ -116,10 +112,7 @@ function normalizeLatexDelimiters(input) {
     text = text.replace(/\\\(([\s\S]*?)\\\)/g, (match, content) => {
         return `$${content}$`;
     });
-    
-    // DEBUG: descomentar para ver el resultado
-    // console.log('OUTPUT NORMALIZED:', JSON.stringify(text));
-    
+        
     return text;
 }
 
@@ -463,35 +456,6 @@ function buildDocxFromTemplate(templateBuffer, templateVars) {
         );
     });
 }
-
-// ─────────────────────────────────────────────
-// ★ NUEVO: ENDPOINT DE DEBUG
-// ─────────────────────────────────────────────
-
-/**
- * POST /debug
- * Útil para ver exactamente qué llega y cómo se transforma.
- */
-app.post('/debug', (req, res) => {
-    const input = req.body.text || '';
-    
-    console.log('=== DEBUG ===');
-    console.log('Raw input:', JSON.stringify(input));
-    
-    const normalized = normalizeLatexDelimiters(input);
-    console.log('Normalized:', JSON.stringify(normalized));
-    
-    const wordXml = markdownLatexToWordXml(input);
-    console.log('Word XML preview:', wordXml.substring(0, 500));
-    
-    res.json({
-        raw: input,
-        normalized: normalized,
-        wordXmlPreview: wordXml.substring(0, 1000),
-        hasOmml: wordXml.includes('<m:oMath')
-    });
-});
-
 // ─────────────────────────────────────────────
 // ENDPOINT POST /convert
 // ─────────────────────────────────────────────
@@ -535,5 +499,4 @@ app.post('/convert', requireApiKey, (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`API corriendo en http://localhost:${PORT}`);
-    console.log(`Endpoint de debug disponible en POST /debug`);
 });
