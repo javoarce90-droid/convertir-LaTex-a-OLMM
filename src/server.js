@@ -1,32 +1,32 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const JSZip = require('jszip');
+const rateLimit = require('express-rate-limit');
+
+// ─────────────────────────────────────────────
+// VARIABLES DE ENTORNO
+// ─────────────────────────────────────────────
+
+const API_KEY = process.env.API_KEY;
+const TEMPLATE_PATH = process.env.TEMPLATE_PATH
+    ? path.resolve(process.env.TEMPLATE_PATH)
+    : path.join(__dirname, 'template.docx');
+
+if (!API_KEY) {
+    console.warn('⚠️  ADVERTENCIA: API_KEY no definida. El endpoint no está protegido.');
+}
 
 // ─────────────────────────────────────────────
 // CONSTANTES
 // ─────────────────────────────────────────────
 
-const TEMPLATE_PLACEHOLDER_KEYS = [
-    'tituloSesion', 'docente', 'institucionEducativa', 'nivel', 'grado', 'area',
-    'seccion', 'fecha', 'competencias', 'capacidades', 'desempeños',
-    'criteriosDeEvaluacion', 'instrumentosDeEvaluacion', 'estandarDeAprendizaje',
-    'proposito', 'evidencia', 'competenciasTransversales', 'enfoquesTransversales',
-    'valores', 'actitudes', 'inicio', 'inicioTiempo', 'desarrollo', 'desarrolloTiempo',
-    'cierre', 'cierreTiempo', 'ejerciciosRespuestas'
-];
-
-const ALLOWED_TEMPLATE_KEYS = new Set(TEMPLATE_PLACEHOLDER_KEYS);
-
-/**
- * Estos campos pueden contener markdown + fórmulas LaTeX ($...$ y $$...$$).
- * Se procesan con el parser interno LaTeX → OMML sin Pandoc ni archivos temporales.
- * El template NO se toca: solo se reemplazan sus placeholders in-place.
- */
-const MARKDOWN_PLACEHOLDER_KEYS = new Set([
-    'inicio', 'desarrollo', 'cierre', 'ejerciciosRespuestas'
-]);
+const {
+    ALLOWED_TEMPLATE_KEYS,
+    MARKDOWN_PLACEHOLDER_KEYS_SET: MARKDOWN_PLACEHOLDER_KEYS,
+} = require('./constant');
 
 // ─────────────────────────────────────────────
 // APP
@@ -35,6 +35,25 @@ const MARKDOWN_PLACEHOLDER_KEYS = new Set([
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const limiter = rateLimit({
+    windowMs: (parseInt(process.env.RATE_LIMIT_WINDOW_MIN) || 10) * 60 * 1000,
+    max: parseInt(process.env.RATE_LIMIT_MAX) || 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Demasiadas solicitudes. Intentá de nuevo en unos minutos.' },
+});
+app.use('/convert', limiter);
+
+function requireApiKey(req, res, next) {
+    console.log("DEBUG API_KEY:", API_KEY, "tipo:", typeof API_KEY);
+    if (!API_KEY) return next();
+    const key = req.headers['x-api-key'];
+    if (!key || key !== API_KEY) {
+        return res.status(401).json({ error: 'API Key inválida o ausente.' });
+    }
+    next();
+}
 
 // ─────────────────────────────────────────────
 // HELPERS XML
@@ -55,18 +74,59 @@ function textToRun(text, bold = false) {
 }
 
 // ─────────────────────────────────────────────
-// PARSER LaTeX → OMML
+// ★ NUEVO: NORMALIZAR DELIMITADORES LATEX
 // ─────────────────────────────────────────────
 
 /**
- * Convierte una expresión LaTeX a OMML (Office Math Markup Language).
- * OMML es el formato nativo de ecuaciones en Word/LibreOffice.
- * No requiere dependencias externas ni Pandoc.
- *
- * @param {string} latex   - LaTeX sin delimitadores $ o $$.
- * @param {boolean} display - true = bloque centrado ($$), false = inline ($).
- * @returns {string} XML OMML listo para insertar en document.xml
+ * Normaliza los delimitadores LaTeX que vienen de Bubble/JSON.
+ * 
+ * Problema: Cuando Bubble envía \( o \[, el JSON los escapa como \\ 
+ * y pueden llegar como \\( o \\\\( dependiendo de cuántas veces se serializó.
+ * 
+ * Esta función convierte TODO a formato $...$ y $$...$$ que es más fácil de parsear.
+ * 
+ * @param {string} input - Texto con fórmulas LaTeX
+ * @returns {string} - Texto normalizado con delimitadores $ y $$
  */
+function normalizeLatexDelimiters(input) {
+    if (!input) return '';
+    
+    let text = input;
+    
+    // DEBUG: descomentar para ver qué llega realmente
+    // console.log('INPUT RAW:', JSON.stringify(text));
+    
+    // Paso 1: Normalizar TODOS los backslashes múltiples en comandos LaTeX
+    // Esto maneja casos donde el JSON se escapó múltiples veces
+    // \\\\vec → \\vec, \\\\frac → \\frac, etc.
+    // Aplicar repetidamente hasta que no haya cambios
+    let prev;
+    do {
+        prev = text;
+        // Reducir \\\\ a \\ (doble escape a simple)
+        text = text.replace(/\\\\/g, '\\');
+    } while (text !== prev);
+    
+    // Paso 2: Convertir \[...\] a $$...$$ (display)
+    text = text.replace(/\\\[([\s\S]*?)\\\]/g, (match, content) => {
+        return `$$${content}$$`;
+    });
+    
+    // Paso 3: Convertir \(...\) a $...$ (inline)
+    text = text.replace(/\\\(([\s\S]*?)\\\)/g, (match, content) => {
+        return `$${content}$`;
+    });
+    
+    // DEBUG: descomentar para ver el resultado
+    // console.log('OUTPUT NORMALIZED:', JSON.stringify(text));
+    
+    return text;
+}
+
+// ─────────────────────────────────────────────
+// PARSER LaTeX → OMML
+// ─────────────────────────────────────────────
+
 function latexToOmml(latex, display = false) {
     const ns = 'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"';
     const parser = new LatexOmmlParser(latex.trim());
@@ -98,9 +158,9 @@ class LatexOmmlParser {
         const ch = this.src[this.pos];
 
         if (ch === '\\') return this.command();
-        if (ch === '{')  return this.group();
-        if (ch === '^')  { this.pos++; return this.sup(this.arg()); }
-        if (ch === '_')  { this.pos++; return this.sub(this.arg()); }
+        if (ch === '{') return this.group();
+        if (ch === '^') { this.pos++; return this.sup(this.arg()); }
+        if (ch === '_') { this.pos++; return this.sub(this.arg()); }
 
         this.pos++;
         return `<m:r><m:t>${xmlEscape(ch)}</m:t></m:r>`;
@@ -115,7 +175,7 @@ class LatexOmmlParser {
     }
 
     command() {
-        this.pos++; // saltar '\'
+        this.pos++;
         let cmd = '';
         if (this.pos < this.src.length && /[a-zA-Z]/.test(this.src[this.pos])) {
             while (this.pos < this.src.length && /[a-zA-Z]/.test(this.src[this.pos])) {
@@ -129,13 +189,11 @@ class LatexOmmlParser {
     }
 
     cmd(c) {
-        // Fracciones
         if (c === 'frac') {
             const n = this.arg(), d = this.arg();
             return `<m:f><m:num>${n}</m:num><m:den>${d}</m:den></m:f>`;
         }
 
-        // Raíz
         if (c === 'sqrt') {
             let deg = '';
             if (this.src[this.pos] === '[') {
@@ -148,7 +206,6 @@ class LatexOmmlParser {
             return `<m:rad><m:radPr><m:degHide m:val="1"/></m:radPr><m:deg/><m:e>${base}</m:e></m:rad>`;
         }
 
-        // N-arios: integral, suma, producto
         const nary = { int: '∫', iint: '∬', iiint: '∭', oint: '∮', sum: '∑', prod: '∏' };
         if (nary[c]) {
             const loc = (c === 'sum' || c === 'prod') ? 'undOvr' : 'subSup';
@@ -156,69 +213,60 @@ class LatexOmmlParser {
             return `<m:nary><m:naryPr><m:chr m:val="${nary[c]}"/><m:limLoc m:val="${loc}"/></m:naryPr><m:sub>${sub}</m:sub><m:sup>${sup}</m:sup><m:e><m:r><m:t/></m:r></m:e></m:nary>`;
         }
 
-        // Límite
         if (c === 'lim') {
             const { sub } = this.limits();
             const subEl = sub ? `<m:sSub><m:e/><m:sub>${sub}</m:sub></m:sSub>` : '';
             return `<m:func><m:funcPr/><m:fName><m:r><m:rPr><m:sty m:val="p"/></m:rPr><m:t>lim</m:t></m:r>${subEl}</m:fName><m:e><m:r><m:t/></m:r></m:e></m:func>`;
         }
 
-        // Decoradores (vec, hat, bar, etc.)
         const accents = { vec: '⃗', hat: '^', bar: '‾', tilde: '~', dot: '˙', ddot: '¨', widehat: '^', overrightarrow: '⃗' };
         if (accents[c]) {
             const e = this.arg();
             return `<m:acc><m:accPr><m:chr m:val="${accents[c]}"/></m:accPr><m:e>${e}</m:e></m:acc>`;
         }
 
-        // text{}
         if (c === 'text') {
             const inner = this.arg();
             return `<m:r><m:rPr><m:sty m:val="p"/></m:rPr><m:t>${inner}</m:t></m:r>`;
         }
 
-        // left/right (delimitadores)
         if (c === 'left' || c === 'right') {
             const d = this.src[this.pos] === '.' ? '' : (this.src[this.pos] || '');
             if (this.src[this.pos]) this.pos++;
             return d ? `<m:r><m:t>${xmlEscape(d)}</m:t></m:r>` : '';
         }
 
-        // Funciones (sin, cos, log, etc.)
-        const funcs = ['sin','cos','tan','cot','sec','csc','log','ln','exp','max','min','sup','inf','det','arg','deg','gcd','lcm'];
+        const funcs = ['sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'log', 'ln', 'exp', 'max', 'min', 'sup', 'inf', 'det', 'arg', 'deg', 'gcd', 'lcm'];
         if (funcs.includes(c)) {
             return `<m:r><m:rPr><m:sty m:val="p"/></m:rPr><m:t>${c}</m:t></m:r>`;
         }
 
-        // Griegos
         const greek = {
-            alpha:'α', beta:'β', gamma:'γ', delta:'δ', epsilon:'ε', zeta:'ζ', eta:'η',
-            theta:'θ', iota:'ι', kappa:'κ', lambda:'λ', mu:'μ', nu:'ν', xi:'ξ', pi:'π',
-            rho:'ρ', sigma:'σ', tau:'τ', upsilon:'υ', phi:'φ', chi:'χ', psi:'ψ', omega:'ω',
-            Gamma:'Γ', Delta:'Δ', Theta:'Θ', Lambda:'Λ', Xi:'Ξ', Pi:'Π',
-            Sigma:'Σ', Phi:'Φ', Psi:'Ψ', Omega:'Ω',
+            alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', zeta: 'ζ', eta: 'η',
+            theta: 'θ', iota: 'ι', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', pi: 'π',
+            rho: 'ρ', sigma: 'σ', tau: 'τ', upsilon: 'υ', phi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω',
+            Gamma: 'Γ', Delta: 'Δ', Theta: 'Θ', Lambda: 'Λ', Xi: 'Ξ', Pi: 'Π',
+            Sigma: 'Σ', Phi: 'Φ', Psi: 'Ψ', Omega: 'Ω',
         };
         if (greek[c]) return `<m:r><m:t>${greek[c]}</m:t></m:r>`;
 
-        // Símbolos
         const syms = {
-            cdot:'·', times:'×', div:'÷', pm:'±', mp:'∓',
-            leq:'≤', geq:'≥', neq:'≠', approx:'≈', equiv:'≡', sim:'∼',
-            infty:'∞', partial:'∂', nabla:'∇', forall:'∀', exists:'∃',
-            in:'∈', notin:'∉', subset:'⊂', supset:'⊃', subseteq:'⊆', supseteq:'⊇',
-            cup:'∪', cap:'∩', emptyset:'∅', varnothing:'∅',
-            rightarrow:'→', leftarrow:'←', Rightarrow:'⇒', Leftarrow:'⇐',
-            leftrightarrow:'↔', Leftrightarrow:'⟺', to:'→',
-            ldots:'…', cdots:'⋯', vdots:'⋮', ddots:'⋱',
-            '|':'|', '\\':'',
+            cdot: '·', times: '×', div: '÷', pm: '±', mp: '∓',
+            leq: '≤', geq: '≥', neq: '≠', approx: '≈', equiv: '≡', sim: '∼',
+            infty: '∞', partial: '∂', nabla: '∇', forall: '∀', exists: '∃',
+            in: '∈', notin: '∉', subset: '⊂', supset: '⊃', subseteq: '⊆', supseteq: '⊇',
+            cup: '∪', cap: '∩', emptyset: '∅', varnothing: '∅',
+            rightarrow: '→', leftarrow: '←', Rightarrow: '⇒', Leftarrow: '⇐',
+            leftrightarrow: '↔', Leftrightarrow: '⟺', to: '→',
+            ldots: '…', cdots: '⋯', vdots: '⋮', ddots: '⋱',
+            '|': '|', '\\': '',
         };
         if (syms[c] !== undefined) return syms[c] ? `<m:r><m:t>${syms[c]}</m:t></m:r>` : '';
 
-        // Big / Bigg (delimitadores de tamaño — ignorar el modificador, mostrar el siguiente char)
-        if (['Big','Bigg','big','bigg','bigl','bigr','Bigl','Bigr'].includes(c)) {
+        if (['Big', 'Bigg', 'big', 'bigg', 'bigl', 'bigr', 'Bigl', 'Bigr'].includes(c)) {
             return this.next();
         }
 
-        // Comando desconocido → mostrar como texto
         return `<m:r><m:t>${xmlEscape('\\' + c)}</m:t></m:r>`;
     }
 
@@ -232,7 +280,7 @@ class LatexOmmlParser {
     }
 
     group() {
-        this.pos++; // '{'
+        this.pos++;
         let depth = 1, start = this.pos;
         while (this.pos < this.src.length && depth > 0) {
             if (this.src[this.pos] === '{') depth++;
@@ -265,25 +313,17 @@ class LatexOmmlParser {
 // ─────────────────────────────────────────────
 
 /**
- * Convierte un string con markdown básico y fórmulas LaTeX a XML de párrafos Word.
- * Genera <w:p> completos que se pueden inyectar en el body del template.
- *
- * Soporta:
- *   $$...$$ → ecuación display (párrafo centrado)
- *   $...$   → ecuación inline
- *   **txt** → negrita
- *   líneas vacías → párrafo vacío
- *   "1. item" → lista numerada (referencia numId=1 del template)
- *   "- item"  → lista viñeta  (referencia numId=2 del template)
- *
- * @param {string} input
- * @returns {string} XML Word (<w:p>…</w:p> concatenados)
+ * Convierte markdown + LaTeX a XML Word.
+ * ★ CAMBIO: Ahora normaliza delimitadores ANTES de procesar.
  */
 function markdownLatexToWordXml(input) {
     if (!input || !input.trim()) return '';
 
+    // ★ NORMALIZAR DELIMITADORES PRIMERO
+    const normalized = normalizeLatexDelimiters(input);
+
     const paras = [];
-    for (const line of input.split('\n')) {
+    for (const line of normalized.split('\n')) {
         const t = line.trim();
 
         if (!t) { paras.push('<w:p/>'); continue; }
@@ -317,23 +357,32 @@ function markdownLatexToWordXml(input) {
 }
 
 /**
- * Convierte una línea de texto con $...$ y **bold** intercalados a runs Word.
- *
- * @param {string} line
- * @returns {string} w:r runs + m:oMath blocks
+ * Convierte una línea con $...$ y **bold** a runs Word.
+ * ★ SIMPLIFICADO: Ya no necesita manejar \(...\) porque están normalizados.
  */
 function inlineToRuns(line) {
     const parts = [];
+    // Solo buscamos $...$ (inline), $$...$$ (display inline), y **bold**
     const re = /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$|\*\*(.+?)\*\*/g;
     let last = 0, m;
 
     while ((m = re.exec(line)) !== null) {
         if (m.index > last) parts.push(textToRun(line.slice(last, m.index)));
-        if (m[1] !== undefined) parts.push(latexToOmml(m[1].trim(), false));  // $$ inline raro
-        else if (m[2] !== undefined) parts.push(latexToOmml(m[2].trim(), false)); // $...$
-        else if (m[3] !== undefined) parts.push(textToRun(m[3], true));          // **bold**
+        
+        if (m[1] !== undefined) {
+            // $$...$$ display (pero en línea con texto)
+            parts.push(latexToOmml(m[1].trim(), false));
+        } else if (m[2] !== undefined) {
+            // $...$ inline
+            parts.push(latexToOmml(m[2].trim(), false));
+        } else if (m[3] !== undefined) {
+            // **bold**
+            parts.push(textToRun(m[3], true));
+        }
+        
         last = re.lastIndex;
     }
+    
     if (last < line.length) parts.push(textToRun(line.slice(last)));
     return parts.join('');
 }
@@ -342,18 +391,7 @@ function inlineToRuns(line) {
 // REEMPLAZAR PLACEHOLDER EN XML DEL TEMPLATE
 // ─────────────────────────────────────────────
 
-/**
- * Busca el <w:p> que contiene el placeholder y lo reemplaza con los párrafos OMML.
- * Word a veces fragmenta un placeholder en múltiples <w:r> runs; esta función
- * primero consolida esos runs antes de buscar.
- *
- * @param {string} xml         - XML completo de document.xml
- * @param {string} placeholder - e.g. "{inicio}"
- * @param {string} replacement - XML Word párrafos generados
- * @returns {string}
- */
 function replacePlaceholderWithXml(xml, placeholder, replacement) {
-    // Estrategia 1: placeholder está limpio en un solo run → buscar el <w:p> contenedor
     const esc = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const pRegex = new RegExp(`<w:p[ >](?:(?!</w:p>).)*${esc}(?:(?!</w:p>).)*</w:p>`, 's');
 
@@ -361,13 +399,10 @@ function replacePlaceholderWithXml(xml, placeholder, replacement) {
         return xml.replace(pRegex, replacement || '<w:p/>');
     }
 
-    // Estrategia 2: reemplazo simple si el placeholder está tal cual en el XML
     if (xml.includes(placeholder)) {
         return xml.split(placeholder).join(replacement || '');
     }
 
-    // Estrategia 3: el placeholder puede estar roto entre runs de Word
-    // Consolidar runs dentro de cada párrafo y reintentar
     const consolidated = consolidateRunsInParagraphs(xml, placeholder);
     if (consolidated !== xml) {
         return replacePlaceholderWithXml(consolidated, placeholder, replacement);
@@ -376,23 +411,9 @@ function replacePlaceholderWithXml(xml, placeholder, replacement) {
     return xml;
 }
 
-/**
- * Word a veces divide el texto de un placeholder en múltiples <w:r><w:t> runs.
- * Esta función consolida el texto de runs consecutivos dentro de cada <w:p>
- * cuando la concatenación coincide con el placeholder buscado.
- *
- * @param {string} xml
- * @param {string} placeholder
- * @returns {string}
- */
 function consolidateRunsInParagraphs(xml, placeholder) {
-    // Reemplazar runs fragmentados: buscar secuencias de <w:t>...</w:t> que juntas forman el placeholder
-    // Simplificación: limpiar atributos de split de runs en el texto del XML
     const key = placeholder.replace('{', '').replace('}', '');
-
-    // Construir regex que detecta el placeholder fragmentado entre tags XML
     const chars = key.split('').map(c => xmlEscape(c));
-    // Cada carácter puede estar separado por tags XML de cierre/apertura de run
     const fragPattern = chars.join('(?:</w:t></w:r><w:r(?:[^>]*)><w:t(?:[^>]*)>|</w:t><w:t(?:[^>]*)>)?');
     const fullPattern = `\\{${fragPattern}\\}`;
 
@@ -408,18 +429,6 @@ function consolidateRunsInParagraphs(xml, placeholder) {
 // BUILD DOCX DESDE TEMPLATE
 // ─────────────────────────────────────────────
 
-/**
- * Aplica templateVars sobre el template.docx:
- * - Campos texto plano → escape XML + reemplazo string directo.
- * - Campos markdown+LaTeX → convierte a OMML y reemplaza el <w:p> contenedor.
- *
- * El template NO se modifica en su estructura, imágenes ni relaciones.
- * Solo se reemplazan los placeholders {clave} en los XML internos.
- *
- * @param {Buffer} templateBuffer
- * @param {Object} templateVars
- * @returns {Promise<Buffer>}
- */
 function buildDocxFromTemplate(templateBuffer, templateVars) {
     return JSZip.loadAsync(templateBuffer).then((zip) => {
         const xmlFiles = Object.keys(zip.files).filter(
@@ -438,11 +447,9 @@ function buildDocxFromTemplate(templateBuffer, templateVars) {
                     if (!out.includes(placeholder)) continue;
 
                     if (MARKDOWN_PLACEHOLDER_KEYS.has(key) && templateVars[key]) {
-                        // Campo con fórmulas: markdown+LaTeX → párrafos OMML
                         const wordXml = markdownLatexToWordXml(templateVars[key]);
                         out = replacePlaceholderWithXml(out, placeholder, wordXml);
                     } else {
-                        // Campo texto plano: escape + reemplazo directo
                         out = out.split(placeholder).join(xmlEscape(templateVars[key] ?? ''));
                     }
                 }
@@ -458,49 +465,38 @@ function buildDocxFromTemplate(templateBuffer, templateVars) {
 }
 
 // ─────────────────────────────────────────────
-// ENDPOINT POST /convert
+// ★ NUEVO: ENDPOINT DE DEBUG
 // ─────────────────────────────────────────────
 
 /**
- * POST /convert
- *
- * Body JSON:
- * {
- *   "templateVars": {
- *     // ── Campos texto plano ──────────────────────────────────────────────
- *     "tituloSesion":            "Teorema de Stokes",
- *     "docente":                 "Prof. García",
- *     "institucionEducativa":    "I.E. San Marcos",
- *     "nivel":                   "Secundaria",
- *     "grado":                   "5to",
- *     "area":                    "Matemática",
- *     "seccion":                 "A",
- *     "fecha":                   "17/03/2026",
- *     "competencias":            "...",
- *     "capacidades":             "...",
- *     "desempeños":              "...",
- *     "criteriosDeEvaluacion":   "...",
- *     "instrumentosDeEvaluacion":"...",
- *     "estandarDeAprendizaje":   "...",
- *     "proposito":               "...",
- *     "evidencia":               "...",
- *     "competenciasTransversales":"...",
- *     "enfoquesTransversales":   "...",
- *     "valores":                 "...",
- *     "actitudes":               "...",
- *     "inicioTiempo":            "20 min",
- *     "desarrolloTiempo":        "50 min",
- *     "cierreTiempo":            "20 min",
- *
- *     // ── Campos markdown + LaTeX ($...$ inline, $$...$$ display) ─────────
- *     "inicio":               "Introducción al **Teorema de Stokes**: $\\int_{\\Sigma} \\omega = \\int_{\\partial\\Sigma} d\\omega$",
- *     "desarrollo":           "**Energía:** $E = mc^2$\n\n$$\\frac{\\partial F_x}{\\partial x} + \\frac{\\partial F_y}{\\partial y}$$",
- *     "cierre":               "Preguntas finales sobre $f(x) = x^2$",
- *     "ejerciciosRespuestas": "**Ej 1:** Calcular $\\int_0^1 x^2 dx$\n**Resp:** $\\frac{1}{3}$"
- *   }
- * }
+ * POST /debug
+ * Útil para ver exactamente qué llega y cómo se transforma.
  */
-app.post('/convert', (req, res) => {
+app.post('/debug', (req, res) => {
+    const input = req.body.text || '';
+    
+    console.log('=== DEBUG ===');
+    console.log('Raw input:', JSON.stringify(input));
+    
+    const normalized = normalizeLatexDelimiters(input);
+    console.log('Normalized:', JSON.stringify(normalized));
+    
+    const wordXml = markdownLatexToWordXml(input);
+    console.log('Word XML preview:', wordXml.substring(0, 500));
+    
+    res.json({
+        raw: input,
+        normalized: normalized,
+        wordXmlPreview: wordXml.substring(0, 1000),
+        hasOmml: wordXml.includes('<m:oMath')
+    });
+});
+
+// ─────────────────────────────────────────────
+// ENDPOINT POST /convert
+// ─────────────────────────────────────────────
+
+app.post('/convert', requireApiKey, (req, res) => {
     const raw = req.body.templateVars && typeof req.body.templateVars === 'object'
         ? req.body.templateVars : {};
 
@@ -516,12 +512,11 @@ app.post('/convert', (req, res) => {
         return res.status(400).send('Falta templateVars');
     }
 
-    const templatePath = path.join(__dirname, 'template.docx');
-    if (!fs.existsSync(templatePath)) {
+    if (!fs.existsSync(TEMPLATE_PATH)) {
         return res.status(500).send('template.docx no encontrado en el servidor');
     }
 
-    buildDocxFromTemplate(fs.readFileSync(templatePath), templateVars)
+    buildDocxFromTemplate(fs.readFileSync(TEMPLATE_PATH), templateVars)
         .then((buf) => {
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
             res.setHeader('Content-Disposition', 'attachment; filename="clase_matematicas.docx"');
@@ -540,4 +535,5 @@ app.post('/convert', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`API corriendo en http://localhost:${PORT}`);
+    console.log(`Endpoint de debug disponible en POST /debug`);
 });
