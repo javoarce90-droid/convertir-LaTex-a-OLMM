@@ -1,0 +1,189 @@
+# convertir-latex-to-omml
+
+API REST que toma variables de texto y fórmulas LaTeX, las inyecta en un template `.docx`, y devuelve el documento Word generado como descarga.
+
+---
+
+## ¿Qué hace?
+
+Recibe un POST con un objeto `templateVars`, busca los placeholders `{clave}` dentro de un `template.docx`, y los reemplaza con el contenido procesado. Los campos marcados como Markdown/LaTeX se convierten a OMML (el formato de fórmulas nativo de Word) antes de insertarse.
+
+---
+
+## Estructura del proyecto
+
+```
+scripts/
+  test-convert.sh             → Test: Ejecución de smoke test. ¿El servidor arranca, recibe el JSON, procesa el LaTeX y devuelve un archivo?
+src/
+  server.js                   → Express: rutas y middleware únicamente
+  constant.js                 → claves permitidas y cuáles son Markdown/LaTeX
+  latex/
+    normalizer.js             → sanitiza delimitadores LaTeX del input (\\(...\\) → $...$)
+    omml.js                   → API pública: latexToOmml, markdownLatexToWordXml
+    parser.js                 → LatexOmmlParser: convierte LaTeX a XML OMML
+    xml-helpers.js            → xmlEscape, textToRun
+    commands/
+      greek.js                → letras griegas (α β γ … Ω)
+      symbols.js              → símbolos matemáticos (≤ ∈ → ∞ …)
+      functions.js            → funciones (sin cos log det tr …)
+      accents.js              → acentos y decoraciones (vec hat bar dot …)
+      nary.js                 → operadores n-arios (∑ ∏ ∫ ∬ ∭ …)
+  docx/
+    placeholder.js            → reemplaza {placeholders} aunque estén fragmentados en el XML
+    builder.js                → abre el .docx como ZIP, inyecta contenido, reensambla
+  ```
+
+---
+
+## Instalación
+
+```bash
+npm install
+```
+
+Dependencias principales: `express`, `jszip`, `express-rate-limit`, `dotenv`.
+
+---
+
+## Variables de entorno
+
+Crear un archivo `.env` en la raíz:
+
+```env
+API_KEY=tu_clave_secreta         # Si no se define, el endpoint queda sin protección
+TEMPLATE_PATH=./template.docx    # Ruta al template (por defecto ./template.docx)
+PORT=3000
+RATE_LIMIT_WINDOW_MIN=10         # Ventana del rate limit en minutos
+RATE_LIMIT_MAX=30                # Máximo de requests por ventana
+```
+
+---
+
+## Uso
+
+```bash
+node server.js
+```
+
+### `POST /convert`
+
+**Headers:**
+```
+Content-Type: application/json
+x-api-key: tu_clave_secreta
+```
+
+**Body:**
+```json
+{
+  "templateVars": {
+    "tituloSesion": "Introducción al Cálculo Vectorial",
+    "docente": "Arturo Barrera",
+    "desarrollo": "El gradiente se define como $\\nabla f = \\frac{\\partial f}{\\partial x}\\hat{i} + \\frac{\\partial f}{\\partial y}\\hat{j}$\n\nY el rotacional:\n$$\\nabla \\times \\mathbf{F} = \\left(0, 0, -2\\right)$$"
+  }
+}
+```
+
+**Respuesta:** archivo `clase_matematicas.docx` para descarga.
+
+---
+
+## Agregar o modificar claves del template
+
+Editar `constant.js`:
+
+```js
+const TEMPLATE_PLACEHOLDER_KEYS = [
+  'tituloSesion',
+  'docente',
+  // ... agregar nueva clave acá
+  'nuevoCampo',
+];
+
+const MARKDOWN_PLACEHOLDER_KEYS = [
+  'inicio',
+  'desarrollo',
+  // agregar acá si el nuevo campo tiene LaTeX
+];
+```
+
+El servidor rechaza cualquier clave que no esté en `ALLOWED_TEMPLATE_KEYS`, por lo que `constant.js` actúa también como whitelist de seguridad.
+
+---
+
+## Agregar soporte para un comando LaTeX nuevo
+
+Dependiendo del tipo de comando, editar el archivo correspondiente en `latex/commands/`:
+
+| Tipo de comando | Archivo |
+|---|---|
+| Letra griega (`\xi`, `\Lambda`) | `greek.js` |
+| Símbolo (`\oplus`, `\angle`) | `symbols.js` |
+| Función matemática (`\erf`, `\Var`) | `functions.js` |
+| Acento o decoración (`\dot`, `\widehat`) | `accents.js` |
+| Integral o sumatoria (`\oiint`) | `nary.js` |
+| Estructura compleja (`\frac`, `\sqrt`) | `parser.js` → método `cmd()` |
+
+---
+
+## Comandos LaTeX soportados
+
+### Estructuras
+`\frac` `\dfrac` `\tfrac` `\cfrac` `\sqrt[n]{}` `\binom` `\overline` `\underline` `\underbrace` `\overbrace` `\left...\right`
+
+### Fuentes matemáticas
+`\mathbf` `\boldsymbol` `\bm` → negrita  
+`\mathrm` `\text` `\textrm` → texto upright  
+`\mathit` → itálica  
+`\mathbb` → letras de pizarrón (ℝ ℕ ℤ ℚ ℂ)  
+`\mathcal` `\mathscr` → caligráfico
+
+### Operadores n-arios
+`\sum` `\prod` `\coprod` `\int` `\iint` `\iiint` `\oint` `\bigcap` `\bigcup` y más
+
+### Acentos
+`\vec` `\hat` `\widehat` `\bar` `\overline` `\tilde` `\dot` `\ddot` `\overrightarrow` y más
+
+### Letras griegas
+Todas las minúsculas y mayúsculas estándar: `\alpha` … `\omega`, `\Gamma` … `\Omega`, más variantes `\varepsilon` `\varphi` `\vartheta` etc.
+
+### Funciones
+`\sin` `\cos` `\tan` `\log` `\ln` `\exp` `\lim` `\det` `\max` `\min` y más de 40 funciones.
+
+### Símbolos
+Operadores binarios, relaciones, flechas, conjuntos, lógica, espaciado y varios — ver `latex/commands/symbols.js` para la lista completa.
+
+---
+
+## Cómo funciona el pipeline internamente
+
+```
+Input (texto con LaTeX)
+        │
+        ▼
+normalizer.js        → unifica backslashes y convierte \(...\) → $...$
+        │
+        ▼
+omml.js              → detecta $$...$$, $...$, **bold**, listas por línea
+        │
+        ▼
+parser.js            → convierte cada expresión LaTeX a XML OMML
+  ├── commands/      → diccionarios de símbolos, griegas, funciones, etc.
+  └── xml-helpers.js → escapa caracteres XML
+        │
+        ▼
+docx/builder.js      → abre template.docx (ZIP), reemplaza placeholders
+  └── placeholder.js → maneja placeholders fragmentados por Word en múltiples runs
+        │
+        ▼
+Output: Buffer del .docx final
+```
+
+---
+
+## Notas sobre el template
+
+El `template.docx` debe contener placeholders con el formato exacto `{clave}`. Word a veces fragmenta el texto en múltiples runs internos (especialmente al editar); el módulo `placeholder.js` lo detecta y reconsolida automáticamente.
+
+Para evitar fragmentación al crear o editar el template, se recomienda escribir el placeholder completo en un solo paso sin correcciones intermedias, o verificar el XML interno del `.docx` si un placeholder no se reemplaza correctamente.
