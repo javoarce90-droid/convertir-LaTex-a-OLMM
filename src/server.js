@@ -23,6 +23,8 @@ if (!API_KEY) {
 }
 
 const app = express();
+// Bubble / CDN / reverse proxy envían X-Forwarded-For; sin esto express-rate-limit avisa y req.ip no refleja al cliente.
+app.set('trust proxy', parseInt(process.env.TRUST_PROXY_HOPS, 10) || 1);
 app.use(cors());
 app.use(express.json({ limit: '20mb' })); // ← límite ampliado para el base64
 
