@@ -14,6 +14,16 @@ const {
 } = require('./constant');
 
 const API_KEY       = process.env.API_KEY;
+const LOG_REQUEST_BODY =
+    process.env.LOG_REQUEST_BODY === '1' ||
+    /^true$/i.test(process.env.LOG_REQUEST_BODY || '') ||
+    /^yes$/i.test(process.env.LOG_REQUEST_BODY || '');
+/** Máx. caracteres por campo de templateVars al loguear (evita volcar textos enormes). */
+const LOG_REQUEST_BODY_MAX_FIELD_CHARS = Math.max(
+    0,
+    parseInt(process.env.LOG_REQUEST_BODY_MAX_FIELD_CHARS, 10) || 8000
+);
+
 const TEMPLATE_PATH = process.env.TEMPLATE_PATH
     ? path.resolve(process.env.TEMPLATE_PATH)
     : path.join(__dirname, 'template.docx');
@@ -46,11 +56,44 @@ function requireApiKey(req, res, next) {
     next();
 }
 
+/**
+ * Copia del body apta para consola: no vuelca templateBase64 completo; trunca valores largos.
+ */
+function bodySnapshotForLog(body) {
+    const snap = { ...body };
+    if (snap.templateBase64) {
+        const len = String(snap.templateBase64).length;
+        snap.templateBase64 = `[omitido: ${len} caracteres base64]`;
+    }
+    if (snap.templateVars && typeof snap.templateVars === 'object') {
+        const out = {};
+        const max = LOG_REQUEST_BODY_MAX_FIELD_CHARS;
+        for (const [k, v] of Object.entries(snap.templateVars)) {
+            const s = v == null ? '' : String(v);
+            if (max > 0 && s.length > max) {
+                out[k] = `${s.slice(0, max)}\n... [truncado, ${s.length} caracteres en total]`;
+            } else {
+                out[k] = s;
+            }
+        }
+        snap.templateVars = out;
+    }
+    return snap;
+}
+
 app.post('/convert', requireApiKey, async (req, res) => {
     const raw          = (req.body.templateVars && typeof req.body.templateVars === 'object')
         ? req.body.templateVars : {};
     const templateUrl  = req.body.templateUrl  || null;
     const templateB64  = req.body.templateBase64 || null;
+
+    if (LOG_REQUEST_BODY) {
+        console.log('[convert] POST body:', JSON.stringify(bodySnapshotForLog(req.body), null, 2));
+        const dropped = Object.keys(raw).filter((k) => !ALLOWED_TEMPLATE_KEYS.has(k));
+        if (dropped.length) {
+            console.log('[convert] Claves en templateVars ignoradas (no están en ALLOWED_TEMPLATE_KEYS):', dropped);
+        }
+    }
 
     const templateVars = {};
     for (const key of Object.keys(raw)) {
