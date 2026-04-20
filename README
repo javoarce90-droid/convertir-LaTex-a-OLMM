@@ -78,9 +78,9 @@ x-api-key: tu_clave_secreta
 ```json
 {
   "templateVars": {
-    "tituloSesion": "Introducción al Cálculo Vectorial",
-    "docente": "Arturo Barrera",
-    "desarrollo": "El gradiente se define como $\\nabla f = \\frac{\\partial f}{\\partial x}\\hat{i} + \\frac{\\partial f}{\\partial y}\\hat{j}$\n\nY el rotacional:\n$$\\nabla \\times \\mathbf{F} = \\left(0, 0, -2\\right)$$"
+    "titulosesion": "Introducción al Cálculo Vectorial",
+    "nombredocente": "Arturo Barrera",
+    "Desarrollo": "El gradiente se define como $\\nabla f = \\frac{\\partial f}{\\partial x}\\hat{i} + \\frac{\\partial f}{\\partial y}\\hat{j}$\n\nY el rotacional:\n$$\\nabla \\times \\mathbf{F} = \\left(0, 0, -2\\right)$$"
   }
 }
 ```
@@ -95,15 +95,17 @@ Editar `constant.js`:
 
 ```js
 const TEMPLATE_PLACEHOLDER_KEYS = [
-  'tituloSesion',
-  'docente',
-  // ... agregar nueva clave acá
+  'titulosesion',
+  'nombredocente',
+  // ... ver lista completa en constant.js
   'nuevoCampo',
 ];
 
 const MARKDOWN_PLACEHOLDER_KEYS = [
-  'inicio',
-  'desarrollo',
+  'Inicio',
+  'Desarrollo',
+  'Cierre',
+  'fichadeaprendizaje',
   // agregar acá si el nuevo campo tiene LaTeX
 ];
 ```

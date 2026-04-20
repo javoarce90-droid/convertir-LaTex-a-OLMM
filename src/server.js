@@ -1,18 +1,17 @@
 require('dotenv').config();
 
-const express    = require('express');
-const cors       = require('cors');
-const fs         = require('fs');
-const path       = require('path');
-const rateLimit  = require('express-rate-limit');
+const express   = require('express');
+const cors      = require('cors');
+const fs        = require('fs');
+const path      = require('path');
+const rateLimit = require('express-rate-limit');
 
-const { buildDocxFromTemplate }  = require('./docx/builder');
+const { buildDocxFromTemplate }              = require('./docx/builder');
+const { fetchRemoteTemplate, decodeBase64Template } = require('./docx/remote-template');
 const {
     ALLOWED_TEMPLATE_KEYS,
     MARKDOWN_PLACEHOLDER_KEYS_SET: MARKDOWN_PLACEHOLDER_KEYS,
 } = require('./constant');
-
-// ── Variables de entorno ──────────────────────────────────────────────────────
 
 const API_KEY       = process.env.API_KEY;
 const TEMPLATE_PATH = process.env.TEMPLATE_PATH
@@ -23,13 +22,11 @@ if (!API_KEY) {
     console.warn('⚠️  ADVERTENCIA: API_KEY no definida. El endpoint no está protegido.');
 }
 
-// ── App ───────────────────────────────────────────────────────────────────────
-
 const app = express();
+// Bubble / CDN / reverse proxy envían X-Forwarded-For; sin esto express-rate-limit avisa y req.ip no refleja al cliente.
+app.set('trust proxy', parseInt(process.env.TRUST_PROXY_HOPS, 10) || 1);
 app.use(cors());
-app.use(express.json());
-
-// ── Rate limiting ─────────────────────────────────────────────────────────────
+app.use(express.json({ limit: '20mb' })); // ← límite ampliado para el base64
 
 const limiter = rateLimit({
     windowMs: (parseInt(process.env.RATE_LIMIT_WINDOW_MIN) || 10) * 60 * 1000,
@@ -40,8 +37,6 @@ const limiter = rateLimit({
 });
 app.use('/convert', limiter);
 
-// ── Middleware de autenticación ───────────────────────────────────────────────
-
 function requireApiKey(req, res, next) {
     if (!API_KEY) return next();
     const key = req.headers['x-api-key'];
@@ -51,13 +46,11 @@ function requireApiKey(req, res, next) {
     next();
 }
 
-// ── POST /convert ─────────────────────────────────────────────────────────────
-
-app.post('/convert', requireApiKey, (req, res) => {
-    // 1. Extraer y sanear templateVars
-    const raw = (req.body.templateVars && typeof req.body.templateVars === 'object')
-        ? req.body.templateVars
-        : {};
+app.post('/convert', requireApiKey, async (req, res) => {
+    const raw          = (req.body.templateVars && typeof req.body.templateVars === 'object')
+        ? req.body.templateVars : {};
+    const templateUrl  = req.body.templateUrl  || null;
+    const templateB64  = req.body.templateBase64 || null;
 
     const templateVars = {};
     for (const key of Object.keys(raw)) {
@@ -71,35 +64,35 @@ app.post('/convert', requireApiKey, (req, res) => {
         return res.status(400).send('Falta templateVars');
     }
 
-    // 2. Verificar que el template existe
-    if (!fs.existsSync(TEMPLATE_PATH)) {
-        return res.status(500).send('template.docx no encontrado en el servidor');
+    // ── Resolver template: base64 > URL pública > archivo local ──
+    let templateBuffer;
+    try {
+        if (templateB64) {
+            templateBuffer = decodeBase64Template(templateB64);
+        } else if (templateUrl) {
+            templateBuffer = await fetchRemoteTemplate(templateUrl);
+        } else {
+            if (!fs.existsSync(TEMPLATE_PATH)) {
+                return res.status(500).send('template.docx no encontrado en el servidor');
+            }
+            templateBuffer = fs.readFileSync(TEMPLATE_PATH);
+        }
+    } catch (err) {
+        console.error('Error resolviendo template:', err.message);
+        return res.status(400).send(`Template inválido: ${err.message}`);
     }
 
-    // 3. Generar el documento
-    buildDocxFromTemplate(
-        fs.readFileSync(TEMPLATE_PATH),
-        templateVars,
-        MARKDOWN_PLACEHOLDER_KEYS
-    )
-        .then((buf) => {
-            res.setHeader(
-                'Content-Type',
-                'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-            );
-            res.setHeader(
-                'Content-Disposition',
-                'attachment; filename="clase_matematicas.docx"'
-            );
-            res.send(buf);
-        })
-        .catch((err) => {
-            console.error('Error generando documento:', err);
-            res.status(500).send('Error al generar el documento');
-        });
+    // ── Generar el documento ──────────────────────────────────────
+    try {
+        const buf = await buildDocxFromTemplate(templateBuffer, templateVars, MARKDOWN_PLACEHOLDER_KEYS);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        res.setHeader('Content-Disposition', 'attachment; filename="clase_matematicas.docx"');
+        res.send(buf);
+    } catch (err) {
+        console.error('Error generando documento:', err);
+        res.status(500).send('Error al generar el documento');
+    }
 });
-
-// ── Start ─────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

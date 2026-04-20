@@ -1,53 +1,54 @@
 const TEMPLATE_PLACEHOLDER_KEYS = [
   // Datos generales
-  'tituloSesion',
-  'docente',
-  'institucionEducativa',
+  'titulosesion',
+  'nombredocente',
+  'ie',
   'nivel',
   'grado',
   'area',
-  'seccion',
   'fecha',
+  'seccion',
 
-  // Propósitos de aprendizaje
-  'competencias',
-  'capacidades',
-  'desempeños',
-  'criteriosDeEvaluacion',
-  'instrumentosDeEvaluacion',
-  'estandarDeAprendizaje',
-  'proposito',
-  'evidencia',
+  // Competencias y evaluación
+  'Competencias',
+  'Capacidades',
+  'Desempeños',
+  'Criterios',
+  'Evaluacion',
 
-  // Enfoques transversales
-  'competenciasTransversales',
-  'enfoquesTransversales',
+  // Transversales
+  'competenciastrans',
+  'capacidadestrans',
+  'enfoques',
   'valores',
   'actitudes',
 
   // Secuencia didáctica
-  'inicio',
-  'inicioTiempo',
-  'desarrollo',
-  'desarrolloTiempo',
-  'cierre',
-  'cierreTiempo',
+  'Inicio',
+  'Desarrollo',
+  'Cierre',
+  'tiempoinicio',
+  'tiempodesarollo',
+  'tiempocierre',
 
-  // Ficha de aprendizaje
-  'ejerciciosRespuestas',
+  // Ficha / propósito / evidencia
+  'fichadeaprendizaje',
+  'proposito',
+  'evidencia',
+  'estandar',
 ];
 
 /**
-* Subset de TEMPLATE_PLACEHOLDER_KEYS cuyos valores pueden contener
-* markdown y fórmulas LaTeX ($...$ inline, $$...$$ display).
-* Estos campos se procesan con el parser LaTeX → OMML en lugar de
-* insertarse como texto plano.
-*/
+ * Subset de TEMPLATE_PLACEHOLDER_KEYS cuyos valores pueden contener
+ * markdown y fórmulas LaTeX ($...$ inline, $$...$$ display).
+ * Estos campos se procesan con el parser LaTeX → OMML en lugar de
+ * insertarse como texto plano.
+ */
 const MARKDOWN_PLACEHOLDER_KEYS = [
-  'inicio',
-  'desarrollo',
-  'cierre',
-  'ejerciciosRespuestas',
+  'Inicio',
+  'Desarrollo',
+  'Cierre',
+  'fichadeaprendizaje',
 ];
 
 // Sets para lookups O(1)
