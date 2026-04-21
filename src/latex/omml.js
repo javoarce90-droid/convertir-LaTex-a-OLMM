@@ -60,7 +60,7 @@ function latexToOmml(latex, display = false) {
  *   # texto (H1-H6)    → encabezado con estilo HeadingN
  *   > texto            → cita con sangría izquierda
  *   1. texto           → lista numerada
- *   -/*/+ texto        → lista con viñeta
+ *   -, *, + texto      → lista con viñeta
  *   (resto)            → párrafo normal con inlineToRuns()
  */
 function markdownLatexToWordXml(input) {
