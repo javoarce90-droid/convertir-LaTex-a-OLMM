@@ -34,11 +34,11 @@ function normalizeLatexDelimiters(input) {
   text = text.replace(/\\\(([\s\S]*?)\\\)/g, (_match, content) => `$${content}$`);
 
   // ── Paso 4: $$...$$ multilinea → una sola línea ───────────────
-  // Cuando el delimitador $$ está solo en su propia línea, el procesador
-  // línea-por-línea no lo detecta como display math.
-  // "$$\ncontent\n$$" → "$$content$$"
+  // \[...\] multilinea produce $$\ncontent_multilinea\n$$ después del Paso 2.
+  // El content.trim() solo quitaba bordes pero dejaba \n internos.
+  // Ahora aplanamos todos los saltos internos con un espacio.
   text = text.replace(/\$\$\s*\n([\s\S]*?)\n\s*\$\$/g,
-      (_, content) => `$$${content.trim()}$$`);
+      (_, content) => `$$${content.replace(/\s*\n\s*/g, ' ').trim()}$$`);
 
   // ── Paso 5: $...$ multilinea → una sola línea ─────────────────
   // Maneja tanto "$\ncontent\n$" como "$content\ncontent\ncontent$".
