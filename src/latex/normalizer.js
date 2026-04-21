@@ -41,10 +41,14 @@ function normalizeLatexDelimiters(input) {
       (_, content) => `$$${content.trim()}$$`);
 
   // ── Paso 5: $...$ multilinea → una sola línea ─────────────────
-  // Mismo problema: "$\ncontent\n$" → "$content$"
-  // Los lookahead/lookbehind evitan capturar la primera mitad de $$.
-  text = text.replace(/(?<!\$)\$(?!\$)\s*\n([\s\S]*?)\n\s*(?<!\$)\$(?!\$)/g,
-      (_, content) => `$${content.trim()}$`);
+  // Maneja tanto "$\ncontent\n$" como "$content\ncontent\ncontent$".
+  // El grupo `before` captura lo que haya entre $ y el primer \n,
+  // y `after` captura el resto hasta el $ de cierre (puede tener más \n).
+  // El replace(/\s+/g,' ') aplana todos los saltos internos de una vez.
+  text = text.replace(
+      /(?<!\$)\$(?!\$)([^$]*?)\n([^$]*?)(?<!\$)\$(?!\$)/g,
+      (_, before, after) => `$${(before + ' ' + after).replace(/\s+/g, ' ').trim()}$`
+  );
 
   return text;
 }
