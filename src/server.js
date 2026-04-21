@@ -32,6 +32,13 @@ if (!API_KEY) {
     console.warn('⚠️  ADVERTENCIA: API_KEY no definida. El endpoint no está protegido.');
 }
 
+if (LOG_REQUEST_BODY) {
+    console.warn(
+        '[convert] LOG_REQUEST_BODY está activo: cada POST /convert volcará templateVars en consola (costoso en Railway). ' +
+            'En producción suele desactivarse con LOG_REQUEST_BODY=0 o sin definir la variable.'
+    );
+}
+
 const app = express();
 // Bubble / CDN / reverse proxy envían X-Forwarded-For; sin esto express-rate-limit avisa y req.ip no refleja al cliente.
 app.set('trust proxy', parseInt(process.env.TRUST_PROXY_HOPS, 10) || 1);
