@@ -33,6 +33,19 @@ function normalizeLatexDelimiters(input) {
   // ── Paso 3: \(...\) → $...$ (inline math) ─────────────────────
   text = text.replace(/\\\(([\s\S]*?)\\\)/g, (_match, content) => `$${content}$`);
 
+  // ── Paso 4: $$...$$ multilinea → una sola línea ───────────────
+  // Cuando el delimitador $$ está solo en su propia línea, el procesador
+  // línea-por-línea no lo detecta como display math.
+  // "$$\ncontent\n$$" → "$$content$$"
+  text = text.replace(/\$\$\s*\n([\s\S]*?)\n\s*\$\$/g,
+      (_, content) => `$$${content.trim()}$$`);
+
+  // ── Paso 5: $...$ multilinea → una sola línea ─────────────────
+  // Mismo problema: "$\ncontent\n$" → "$content$"
+  // Los lookahead/lookbehind evitan capturar la primera mitad de $$.
+  text = text.replace(/(?<!\$)\$(?!\$)\s*\n([\s\S]*?)\n\s*(?<!\$)\$(?!\$)/g,
+      (_, content) => `$${content.trim()}$`);
+
   return text;
 }
 
