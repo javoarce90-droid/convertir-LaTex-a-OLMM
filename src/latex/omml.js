@@ -11,7 +11,8 @@
  *
  *   markdownLatexToWordXml(input)
  *     Convierte texto completo (Markdown + LaTeX) a párrafos <w:p> Word.
- *     Maneja: $$...$$, $...$, **negrita**, listas, saltos de línea.
+ *     Maneja: $$...$$, $...$, **negrita**, # encabezados, > citas,
+ *     --- líneas horizontales, listas (-/*/+/1.), saltos de línea.
  *
  *   inlineToRuns(line)
  *     Convierte una sola línea con $...$ y **bold** a runs Word.
@@ -53,10 +54,13 @@ function latexToOmml(latex, display = false) {
 /**
  * Convierte texto con Markdown + LaTeX a párrafos Word (<w:p>).
  *
- * Reglas de detección por línea:
+ * Reglas de detección por línea (en orden de prioridad):
+ *   ---/===/___ (3+)   → línea horizontal
  *   $$...$$ solo       → fórmula display centrada
+ *   # texto (H1-H6)    → encabezado con estilo HeadingN
+ *   > texto            → cita con sangría izquierda
  *   1. texto           → lista numerada
- *   - texto / * texto  → lista con viñeta
+ *   -/*/+ texto        → lista con viñeta
  *   (resto)            → párrafo normal con inlineToRuns()
  */
 function markdownLatexToWordXml(input) {
@@ -74,6 +78,16 @@ function markdownLatexToWordXml(input) {
             continue;
         }
 
+        // ── Línea horizontal: ---, ***, ___ (3+ del mismo carácter) ──
+        if (/^([-*_])\1{2,}$/.test(t)) {
+            paras.push(
+                `<w:p><w:pPr><w:pBdr>` +
+                `<w:bottom w:val="single" w:sz="6" w:space="1" w:color="auto"/>` +
+                `</w:pBdr></w:pPr></w:p>`
+            );
+            continue;
+        }
+
         // ── $$...$$ como línea completa → display math ────────────
         const dm = t.match(/^\$\$([\s\S]+?)\$\$$/);
         if (dm) {
@@ -81,6 +95,31 @@ function markdownLatexToWordXml(input) {
                 `<w:p>` +
                 `<w:pPr><w:jc w:val="center"/></w:pPr>` +
                 `${latexToOmml(dm[1].trim(), true)}` +
+                `</w:p>`
+            );
+            continue;
+        }
+
+        // ── Encabezado: # H1 a ###### H6 ─────────────────────────
+        const hm = t.match(/^(#{1,6})\s+(.+)/);
+        if (hm) {
+            const level = hm[1].length;
+            paras.push(
+                `<w:p>` +
+                `<w:pPr><w:pStyle w:val="Heading${level}"/></w:pPr>` +
+                `${inlineToRuns(hm[2])}` +
+                `</w:p>`
+            );
+            continue;
+        }
+
+        // ── Cita en bloque: "> texto" ─────────────────────────────
+        const qm = t.match(/^>\s*(.*)/);
+        if (qm) {
+            paras.push(
+                `<w:p>` +
+                `<w:pPr><w:ind w:left="720"/></w:pPr>` +
+                `${inlineToRuns(qm[1])}` +
                 `</w:p>`
             );
             continue;
@@ -98,8 +137,8 @@ function markdownLatexToWordXml(input) {
             continue;
         }
 
-        // ── Lista con viñeta: "- texto" o "* texto" ───────────────
-        const bm = t.match(/^[-*]\s+(.+)/);
+        // ── Lista con viñeta: "- texto", "* texto" o "+ texto" ────
+        const bm = t.match(/^[-*+]\s+(.+)/);
         if (bm) {
             paras.push(
                 `<w:p>` +
