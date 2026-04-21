@@ -12,7 +12,7 @@
  *   markdownLatexToWordXml(input)
  *     Convierte texto completo (Markdown + LaTeX) a párrafos <w:p> Word.
  *     Maneja: $$...$$, $...$, **negrita**, # encabezados, > citas,
- *     --- líneas horizontales, listas (-/*/+/1.), saltos de línea.
+ *     --- líneas horizontales, listas (-, *, +, 1.), saltos de línea.
  *
  *   inlineToRuns(line)
  *     Convierte una sola línea con $...$ y **bold** a runs Word.
