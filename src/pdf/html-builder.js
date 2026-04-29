@@ -223,7 +223,6 @@ function buildPdfHtml(templateVars) {
     font-size: 8pt;
     text-align: center;
     vertical-align: middle;
-    width: 9%;
     padding: 3px;
   }
 
@@ -231,7 +230,6 @@ function buildPdfHtml(templateVars) {
     font-size: 8.5pt;
     text-align: center;
     vertical-align: top;
-    width: 10%;
     padding: 2px 3px;
   }
 
@@ -358,11 +356,19 @@ function buildPdfHtml(templateVars) {
 
   <!-- ═══════════════ III. SECUENCIA DIDÁCTICA ════════════════════ -->
   <table class="doc-table">
-    <tr class="no-break"><td colspan="3" class="sec-header">III. Secuencia Didáctica</td></tr>
+    <tr class="no-break"><td class="sec-header">III. Secuencia Didáctica</td></tr>
+  </table>
+
+  <table class="doc-table">
+    <colgroup>
+      <col style="width:10%;">
+      <col style="width:80%;">
+      <col style="width:10%;">
+    </colgroup>
     <tr class="no-break">
-      <td class="sec-header" style="width:9%;">Momento</td>
-      <td class="sec-header" style="width:81%;">Actividades / Estrategias</td>
-      <td class="sec-header" style="width:10%;">Tiempo (min)</td>
+      <td class="sec-header">Momento</td>
+      <td class="sec-header">Actividades / Estrategias</td>
+      <td class="sec-header">Tiempo (min)</td>
     </tr>
     <tr>
       <td class="momento-label">INICIO</td>
