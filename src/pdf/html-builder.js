@@ -11,6 +11,11 @@ function getBgBase64() {
 
 const BG_BASE64 = getBgBase64();
 
+// MathJax v3 tex-svg combined bundle resolved from node_modules. The renderer
+// injects this file via page.addScriptTag() so the PDF pipeline has no external
+// CDN dependency. SVG output embeds its own glyphs — no font files are needed.
+const MATHJAX_BUNDLE_PATH = require.resolve('mathjax-full/es5/tex-svg.js');
+
 // ── HTML chunks ───────────────────────────────────────────────────────────────
 
 function sectionHeader(text, colspan = 2) {
@@ -85,7 +90,7 @@ function buildPdfHtml(templateVars) {
     }
   };
 </script>
-<script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+<!-- MathJax bundle injected by renderer.js via page.addScriptTag (no CDN). -->
 <style>
   /* Margenes reservados para el header/footer del fondo (logo, QR, lema). */
   @page { size: A4; margin: 18mm 13mm 30mm 13mm; }
@@ -399,4 +404,4 @@ function buildPdfHtml(templateVars) {
 </html>`;
 }
 
-module.exports = { buildPdfHtml };
+module.exports = { buildPdfHtml, MATHJAX_BUNDLE_PATH };
