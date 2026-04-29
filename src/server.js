@@ -8,6 +8,8 @@ const rateLimit = require('express-rate-limit');
 
 const { buildDocxFromTemplate }              = require('./docx/builder');
 const { fetchRemoteTemplate, decodeBase64Template } = require('./docx/remote-template');
+const { buildPdfHtml }                       = require('./pdf/html-builder');
+const { renderHtmlToPdf }                    = require('./pdf/renderer');
 const {
     ALLOWED_TEMPLATE_KEYS,
     MARKDOWN_PLACEHOLDER_KEYS_SET: MARKDOWN_PLACEHOLDER_KEYS,
@@ -141,6 +143,40 @@ app.post('/convert', requireApiKey, async (req, res) => {
     } catch (err) {
         console.error('Error generando documento:', err);
         res.status(500).send('Error al generar el documento');
+    }
+});
+
+// ── POST /convert-pdf ────────────────────────────────────────────────────────
+
+app.post('/convert-pdf', requireApiKey, async (req, res) => {
+    const raw = (req.body.templateVars && typeof req.body.templateVars === 'object')
+        ? req.body.templateVars : {};
+
+    if (LOG_REQUEST_BODY) {
+        console.log('[convert-pdf] POST body:', JSON.stringify(bodySnapshotForLog(req.body), null, 2));
+    }
+
+    const templateVars = {};
+    for (const key of Object.keys(raw)) {
+        if (ALLOWED_TEMPLATE_KEYS.has(key)) {
+            const v = raw[key];
+            templateVars[key] = v == null ? '' : String(v);
+        }
+    }
+
+    if (Object.keys(templateVars).length === 0) {
+        return res.status(400).send('Falta templateVars');
+    }
+
+    try {
+        const html = buildPdfHtml(templateVars);
+        const pdf  = await renderHtmlToPdf(html);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'attachment; filename="sesion_aprendizaje.pdf"');
+        res.send(pdf);
+    } catch (err) {
+        console.error('Error generando PDF:', err);
+        res.status(500).send('Error al generar el PDF');
     }
 });
 
