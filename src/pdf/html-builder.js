@@ -13,8 +13,8 @@ const BG_BASE64 = getBgBase64();
 
 // ── HTML chunks ───────────────────────────────────────────────────────────────
 
-function sectionHeader(text) {
-    return `<tr><td colspan="2" class="sec-header">${escHtml(text)}</td></tr>`;
+function sectionHeader(text, colspan = 2) {
+    return `<tr><td colspan="${colspan}" class="sec-header">${escHtml(text)}</td></tr>`;
 }
 
 function labelRow(label, value, isMarkdown = false) {
@@ -28,15 +28,28 @@ function labelRow(label, value, isMarkdown = false) {
         </tr>`;
 }
 
-function fullWidthLabelRow(label) {
-    return `<tr><td colspan="2" class="sec-header">${escHtml(label)}</td></tr>`;
-}
+/**
+ * Crea una tabla con N columnas (header en una fila + valores en otra),
+ * replicando el patrón "encabezados arriba, valores debajo" del template.docx.
+ * @param {Array<{label: string, value: string, width: string, isMarkdown?: boolean}>} cols
+ */
+function columnTable(cols) {
+    const headers = cols.map(c =>
+        `<td class="col-label" style="width:${c.width};">${escHtml(c.label)}</td>`
+    ).join('');
 
-function fullWidthValueRow(value, isMarkdown = false) {
-    const content = isMarkdown
-        ? markdownLatexToHtml(value || '')
-        : `<span class="plain-text">${escHtml(value || '')}</span>`;
-    return `<tr><td colspan="2" class="field-value">${content}</td></tr>`;
+    const values = cols.map(c => {
+        const content = c.isMarkdown
+            ? markdownLatexToHtml(c.value || '')
+            : `<span class="plain-text">${escHtml(c.value || '')}</span>`;
+        return `<td class="field-value" style="width:${c.width};">${content}</td>`;
+    }).join('');
+
+    return `
+        <table class="doc-table">
+            <tr class="no-break">${headers}</tr>
+            <tr>${values}</tr>
+        </table>`;
 }
 
 // ── Main builder ──────────────────────────────────────────────────────────────
@@ -45,7 +58,7 @@ function buildPdfHtml(templateVars) {
     const v = templateVars;
 
     const bgStyle = BG_BASE64
-        ? `background-image: url('data:image/png;base64,${BG_BASE64}'); background-size: 100% 100%;`
+        ? `background-image: url('data:image/png;base64,${BG_BASE64}'); background-size: 210mm 297mm; background-position: top left; background-repeat: no-repeat;`
         : 'background-color: #ffffff;';
 
     return `<!DOCTYPE html>
@@ -74,9 +87,12 @@ function buildPdfHtml(templateVars) {
 </script>
 <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
 <style>
-  @page { size: A4; margin: 0; }
+  /* Margenes reservados para el header/footer del fondo (logo, QR, lema). */
+  @page { size: A4; margin: 18mm 13mm 30mm 13mm; }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { width: 100%; }
 
   body {
     font-family: Arial, sans-serif;
@@ -87,17 +103,18 @@ function buildPdfHtml(templateVars) {
   /* MathJax renders async — hide content until done to avoid flash */
   body.mathjax-loading { visibility: hidden; }
 
-  /* Full-page background — repeats on every PDF page */
+  /*
+   * Fondo de página: position:fixed se posiciona relativo al papel (no al margin
+   * box) en el modo print de Chromium, así que el PNG cubre toda la hoja en
+   * cada página y los márgenes @page reservan el espacio para que el contenido
+   * no se solape con el footer ilustrado.
+   */
   .page-bg {
     position: fixed;
     top: 0; left: 0;
-    width: 100%; height: 100%;
+    width: 210mm; height: 297mm;
     z-index: -1;
     ${bgStyle}
-  }
-
-  .content {
-    padding: 16mm 13mm 14mm 13mm;
   }
 
   /* ── Tables ── */
@@ -113,6 +130,13 @@ function buildPdfHtml(templateVars) {
     vertical-align: top;
     padding: 2px 4px;
     word-break: break-word;
+  }
+
+  /* Permitir que las celdas grandes se partan entre páginas, pero mantener
+   * los encabezados y filas cortas juntas. */
+  .doc-table tr.no-break {
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 
   /* ── Section / field styles ── */
@@ -145,6 +169,7 @@ function buildPdfHtml(templateVars) {
     font-size: 9pt;
     padding: 2px 4px;
     border: 1px solid #888;
+    text-align: center;
   }
 
   .field-label {
@@ -163,7 +188,18 @@ function buildPdfHtml(templateVars) {
     vertical-align: top;
   }
 
-  /* ── Datos generales 5-column row ── */
+  /* Encabezado de columna (estilo "Competencias / Capacidades / Desempeños…") */
+  .col-label {
+    background-color: #2F4060;
+    color: #fff;
+    font-weight: bold;
+    font-size: 8pt;
+    text-align: center;
+    padding: 3px;
+    vertical-align: middle;
+  }
+
+  /* ── Datos generales 2-column row ── */
   .col-header {
     background-color: #2F4060;
     color: #fff;
@@ -187,7 +223,7 @@ function buildPdfHtml(templateVars) {
     font-size: 8pt;
     text-align: center;
     vertical-align: middle;
-    width: 12%;
+    width: 9%;
     padding: 3px;
   }
 
@@ -195,7 +231,7 @@ function buildPdfHtml(templateVars) {
     font-size: 8.5pt;
     text-align: center;
     vertical-align: top;
-    width: 14%;
+    width: 10%;
     padding: 2px 3px;
   }
 
@@ -228,8 +264,6 @@ function buildPdfHtml(templateVars) {
 
 <div class="page-bg"></div>
 
-<div class="content">
-
   <!-- ═══════════════════════ TÍTULO PRINCIPAL ═══════════════════════ -->
   <div class="main-title">Sesión de Aprendizaje</div>
 
@@ -237,7 +271,7 @@ function buildPdfHtml(templateVars) {
 
   <!-- Título de la sesión -->
   <table class="doc-table">
-    <tr><td class="session-title-label"><strong>Título de la sesión</strong></td></tr>
+    <tr class="no-break"><td class="session-title-label"><strong>Título de la sesión</strong></td></tr>
     <tr><td class="session-title-value">${escHtml(v.titulosesion || '')}</td></tr>
   </table>
 
@@ -245,32 +279,32 @@ function buildPdfHtml(templateVars) {
 
   <!-- ═══════════════════ I. DATOS GENERALES ═══════════════════════ -->
   <table class="doc-table">
-    <tr><td colspan="2" class="sec-header">I. Datos Generales</td></tr>
-    <tr>
-      <td style="width:16%; font-weight:bold; font-size:8pt; padding:2px 4px;">Docente:</td>
+    <tr class="no-break"><td colspan="2" class="sec-header">I. Datos Generales</td></tr>
+    <tr class="no-break">
+      <td style="width:22%; background-color:#2F4060; color:#fff; font-weight:bold; font-size:8pt; padding:2px 4px;">Docente:</td>
       <td style="font-size:8.5pt; padding:2px 4px;">${escHtml(v.nombredocente || '')}</td>
     </tr>
-    <tr>
-      <td style="width:16%; font-weight:bold; font-size:8pt; padding:2px 4px;">Institución Educativa:</td>
+    <tr class="no-break">
+      <td style="width:22%; background-color:#2F4060; color:#fff; font-weight:bold; font-size:8pt; padding:2px 4px;">Institución Educativa:</td>
       <td style="font-size:8.5pt; padding:2px 4px;">${escHtml(v.ie || '')}</td>
     </tr>
-    <tr>
+    <tr class="no-break">
       <td class="col-header">Nivel</td>
       <td class="col-header">Grado</td>
     </tr>
-    <tr>
+    <tr class="no-break">
       <td class="col-value">${escHtml(v.nivel || '')}</td>
       <td class="col-value">${escHtml(v.grado || '')}</td>
     </tr>
-    <tr>
+    <tr class="no-break">
       <td class="col-header">Área</td>
       <td class="col-header">Sección</td>
     </tr>
-    <tr>
+    <tr class="no-break">
       <td class="col-value">${escHtml(v.area || '')}</td>
       <td class="col-value">${escHtml(v.seccion || '')}</td>
     </tr>
-    <tr>
+    <tr class="no-break">
       <td class="col-header">Fecha</td>
       <td class="col-value">${escHtml(v.fecha || '')}</td>
     </tr>
@@ -279,41 +313,56 @@ function buildPdfHtml(templateVars) {
   <div style="height:3px;"></div>
 
   <!-- ═══════════════ II. PROPÓSITOS DE APRENDIZAJE ═══════════════ -->
+  <!-- Encabezado de sección como tabla independiente -->
   <table class="doc-table">
-    <tr><td colspan="2" class="sec-header">II. Propósitos de Aprendizaje</td></tr>
-    ${labelRow('Competencias', v.Competencias)}
-    ${labelRow('Capacidades', v.Capacidades)}
-    <tr>
-      <td class="field-label">Desempeños</td>
-      <td class="field-value"></td>
-    </tr>
-    ${labelRow('Criterios de Evaluación', v.Criterios)}
-    ${labelRow('Instrumentos de Evaluación', v.Evaluacion)}
-    ${labelRow('Estándar de Aprendizaje', v.estandar)}
-    ${labelRow('Propósito', v.proposito)}
-    ${labelRow('Evidencia', v.evidencia)}
+    <tr class="no-break"><td class="sec-header">II. Propósitos de Aprendizaje</td></tr>
   </table>
+
+  <!-- 5 columnas: Competencias / Capacidades / Desempeños / Criterios / Instrumentos -->
+  ${columnTable([
+      { label: 'Competencias',                value: v.Competencias, width: '20%' },
+      { label: 'Capacidades',                 value: v.Capacidades,  width: '20%' },
+      { label: 'Desempeños',                  value: v.Desempeños,   width: '21%' },
+      { label: 'Criterios de Evaluación',     value: v.Criterios,    width: '19%' },
+      { label: 'Instrumentos de Evaluación',  value: v.Evaluacion,   width: '20%' },
+  ])}
+
+  <!-- Estándar de Aprendizaje (1 columna) -->
+  ${columnTable([
+      { label: 'Estándar de Aprendizaje', value: v.estandar, width: '100%' },
+  ])}
+
+  <!-- Propósito + Evidencia (2 columnas) -->
+  ${columnTable([
+      { label: 'Propósito', value: v.proposito, width: '50%' },
+      { label: 'Evidencia', value: v.evidencia, width: '50%' },
+  ])}
 
   <div style="height:3px;"></div>
 
   <!-- ═══════════════ COMPETENCIAS TRANSVERSALES ═══════════════════ -->
-  <table class="doc-table">
-    ${labelRow('Competencias Transversales', v.competenciastrans)}
-    ${labelRow('Capacidades', v.capacidadestrans)}
-    ${labelRow('Enfoques Transversales', v.enfoques)}
-    ${labelRow('Valores', v.valores)}
-    ${labelRow('Actitudes / Acciones Observables', v.actitudes)}
-  </table>
+  <!-- 2 columnas: Competencias Transversales | Capacidades -->
+  ${columnTable([
+      { label: 'Competencias Transversales', value: v.competenciastrans, width: '50%' },
+      { label: 'Capacidades',                value: v.capacidadestrans,  width: '50%' },
+  ])}
+
+  <!-- 3 columnas: Enfoques Transversales | Valores | Actitudes / Acciones Observables -->
+  ${columnTable([
+      { label: 'Enfoques Transversales',         value: v.enfoques,  width: '33%' },
+      { label: 'Valores',                        value: v.valores,   width: '29%' },
+      { label: 'Actitudes / Acciones Observables', value: v.actitudes, width: '38%' },
+  ])}
 
   <div style="height:3px;"></div>
 
   <!-- ═══════════════ III. SECUENCIA DIDÁCTICA ════════════════════ -->
   <table class="doc-table">
-    <tr><td colspan="3" class="sec-header">III. Secuencia Didáctica</td></tr>
-    <tr>
-      <td class="sec-header" style="width:12%; text-align:center;">Momento</td>
-      <td class="sec-header" style="width:74%;">Actividades / Estrategias</td>
-      <td class="sec-header" style="width:14%; text-align:center;">Tiempo (min)</td>
+    <tr class="no-break"><td colspan="3" class="sec-header">III. Secuencia Didáctica</td></tr>
+    <tr class="no-break">
+      <td class="sec-header" style="width:9%;">Momento</td>
+      <td class="sec-header" style="width:81%;">Actividades / Estrategias</td>
+      <td class="sec-header" style="width:10%;">Tiempo (min)</td>
     </tr>
     <tr>
       <td class="momento-label">INICIO</td>
@@ -336,19 +385,10 @@ function buildPdfHtml(templateVars) {
 
   <!-- ═══════════════ FICHA DE APRENDIZAJE ════════════════════════ -->
   <table class="doc-table">
-    <tr><td class="sec-header">Ficha de Aprendizaje</td></tr>
+    <tr class="no-break"><td class="sec-header">Ficha de Aprendizaje</td></tr>
     <tr><td class="field-value">${markdownLatexToHtml(v.fichadeaprendizaje || '')}</td></tr>
   </table>
 
-  <div style="height:3px;"></div>
-
-  <!-- ═══════════════ EJERCICIOS Y RESPUESTAS ══════════════════════ -->
-  <table class="doc-table">
-    <tr><td class="sec-header">Ejercicios y Respuestas</td></tr>
-    <tr><td class="field-value" style="min-height:30px;"></td></tr>
-  </table>
-
-</div>
 </body>
 </html>`;
 }

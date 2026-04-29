@@ -12,10 +12,13 @@ async function renderHtmlToPdf(html) {
         // Wait for MathJax to finish rendering all formulas
         await page.waitForFunction('window._mathJaxReady === true', { timeout: 15000 });
 
+        // Los márgenes reservan top/bottom para que el contenido no se solape
+        // con el header/footer ilustrado del PNG (logo, QR, lema).
         const pdf = await page.pdf({
             format: 'A4',
             printBackground: true,
-            margin: { top: 0, right: 0, bottom: 0, left: 0 },
+            preferCSSPageSize: true,
+            margin: { top: '18mm', right: '13mm', bottom: '30mm', left: '13mm' },
         });
         return pdf;
     } finally {
