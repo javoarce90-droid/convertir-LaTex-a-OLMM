@@ -71,10 +71,13 @@ function consolidateRunsInParagraphs(xml, placeholder) {
     const key   = placeholder.replace('{', '').replace('}', '');
     const chars = key.split('').map(c => xmlEscape(c));
 
-    // Patrón que une los caracteres aunque haya separadores de run entre ellos
-    const fragPattern = chars.join(
-        '(?:</w:t></w:r><w:r(?:[^>]*)><w:t(?:[^>]*)>|</w:t><w:t(?:[^>]*)>)?'
-    );
+    // Patrón que une los caracteres aunque haya separadores de run entre ellos.
+    // Cubre los casos generados al PEGAR texto en Word:
+    //   - <w:rPr>...</w:rPr> (propiedades de run: idioma, formato) entre <w:r> y <w:t>
+    //   - <w:proofErr .../> (spell/grammar check) entre runs
+    //   - corte simple de texto dentro del mismo run (</w:t><w:t>)
+    const RUN_SEP = String.raw`(?:</w:t>(?:</w:r>(?:<[^>]+/>)*)?(?:<w:r(?:[^>]*)>)?(?:<w:rPr>[\s\S]*?</w:rPr>)?<w:t(?:[^>]*)>)?`;
+    const fragPattern = chars.join(RUN_SEP);
     const fullPattern = `\\{${fragPattern}\\}`;
 
     try {
